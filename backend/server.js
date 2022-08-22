@@ -1,16 +1,27 @@
 const { Sequelize, DataTypes, Op } = require('sequelize');
 const fs = require('fs');
 const express = require("express");
+const bodyParser = require("body-parser");
 const CyrillicToTranslit = require('cyrillic-to-translit-js');
 const cyrillicToTranslit = new CyrillicToTranslit();
 const app = express();
 let sequelize, Singer, Song;
+
+app.use(function (req, res, next) {
+
+    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3001');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type');
+
+    next();
+});
 
 app.use(
     express.urlencoded({
       extended: true,
     })
 );
+app.use(bodyParser.json());
 
 const config = new Object({
     database: "postgres",
@@ -134,10 +145,14 @@ app.get('/read_songs', async (req, res) => {
     if (req.query.createdAt)
         songs_filter.where.createdAt = new Date(req.query.createdAt);
     
-    if (req.query.top)
-        songs_filter.limit = req.query.top;
+    if (req.query.limit)
+        songs_filter.limit = req.query.limit;
+
+    if (req.query.offset)
+        songs_filter.offset = req.query.offset;
 
     const songs = await Song.findAll(songs_filter);
+    console.log(songs);
     res.send(songs);
 });
 
@@ -184,8 +199,11 @@ app.get('/read_singers', async (req, res) => {
     if (req.query.createdAt)
         singers_filter.where.createdAt = new Date(req.query.createdAt);
     
-    if (req.query.top)
-        singers_filter.limit = req.query.top;
+    if (req.query.limit)
+        singers_filter.limit = req.query.limit;
+
+    if (req.query.offset)
+        singers_filter.offset = req.query.offset;
 
     const singers = await Singer.findAll(singers_filter)
     res.send(singers);
