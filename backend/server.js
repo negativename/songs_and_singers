@@ -95,7 +95,7 @@ function model_init(){
             modelName: 'Singer',
         }
     )
-    Singer.hasMany(Song);
+    Singer.hasMany(Song, {onDelete: 'CASCADE'});
     Song.belongsTo(Singer);
 
     Song.sync({ alter: true });
