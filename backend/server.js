@@ -2,11 +2,19 @@ const { Sequelize, DataTypes, Op } = require('sequelize');
 const fs = require('fs');
 const express = require("express");
 const bodyParser = require("body-parser");
+const { createLogger, format, transports } = require("winston");
 const CyrillicToTranslit = require('cyrillic-to-translit-js');
 const cyrillicToTranslit = new CyrillicToTranslit();
 const app = express();
 let sequelize, Singer, Song;
 
+// request.socket.remoteAddress
+const logger = createLogger({
+    format: format.combine(format.timestamp(), format.json()),
+    transports: [new transports.Console({})],
+});
+
+logger.info("Adding CORS Headers");
 app.use(function (req, res, next) {
 
     res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3001');
@@ -16,6 +24,7 @@ app.use(function (req, res, next) {
     next();
 });
 
+logger.info("Adding body parser");
 app.use(
     express.urlencoded({
       extended: true,
@@ -23,6 +32,7 @@ app.use(
 );
 app.use(bodyParser.json());
 
+logger.info("Creating default config parameters");
 const config = new Object({
     database: "postgres",
     username: "postgres",
@@ -32,19 +42,22 @@ const config = new Object({
     schema: "postgres"
 })
 
+logger.info("Setting default config path");
 const path = './config.json';
 
 function read_config(){
     try {
+        logger.info(`Watching for existing config.`);
         fs.accessSync(path, fs.F_OK);
-        console.log('Config exists');
+        logger.info(`Config exists.`);
     }
     catch(err){
-        console.log('Config does not exist. Creating default one...');
+        logger.info(`Config does not exist. Creating default one...`);
         fs.writeFileSync('config.json', JSON.stringify(config));
-        console.log('Config created successfully')
+        logger.info(`Config created successfully`);
     }
     
+    logger.info(`Reading credentials from config`);
     return fs.readFileSync(path, "utf8");
 };
 
@@ -53,16 +66,17 @@ function conn_setup(credentials){
         host: credentials.host,
         dialect: 'postgres'
     });
-    console.log("Setup was successul");
+    logger.info(`Setup was successful`);
 };
 
 async function test_conn(){
     try {
+        logger.info(`Testing connection`);
         await sequelize.authenticate();
-        console.log('Соединение с БД было успешно установлено')
+        logger.info(`Successfully connected`);
         return true;
     } catch (e) {
-        console.log('Невозможно выполнить подключение к БД: ', e)
+        logger.error(`Couldn't connect to database. Error: ${e}`);
         return false;
     }
 }
@@ -98,6 +112,7 @@ function model_init(){
     Singer.hasMany(Song, {onDelete: 'CASCADE'});
     Song.belongsTo(Singer);
 
+    logger.info(`Synchronizing models with database`);
     Song.sync({ alter: true });
     Singer.sync({ alter: true });
 }
@@ -113,18 +128,25 @@ function find_money(name){
 app.set("view engine", "hbs");
 
 app.get('/', (req, res) => {
+    logger.info(`Getting db credentials from config. UserIP: ${req.ip}`);
     let db_credentials = JSON.parse(read_config());
+    logger.info(`Setting up connection to db. UserIP: ${req.ip}`);
     conn_setup(db_credentials);
+
+    logger.info(`Testing connection stable to db. UserIP: ${req.ip}`);
     if (!test_conn()){
+        logger.error(`Wrong connection to db. UserIP: ${req.ip}`);
         res.send('Неправильные данные для подключения к базе данных');
     }
     else {
+        logger.info(`Initializing sequelize models. UserIP: ${req.ip}`);
         model_init();
         res.send('Инициализация базы данных успешно выполнена');
     }
 });
 
 app.post('/create_song', async (req, res) => {
+    logger.info(`Creating new song. UserIP: ${req.ip}`);
     const song = await Song.create({name: req.body.name, SingerId: req.body.SingerId});
     res.send(`Добавлена новая песня под именем ${song.name} исполнителя ${song.SingerId}`);
 });
@@ -151,12 +173,13 @@ app.get('/read_songs', async (req, res) => {
     if (req.query.offset)
         songs_filter.offset = req.query.offset;
 
+    logger.info(`Getting songs from database. UserIP: ${req.ip}`);
     const songs = await Song.findAll(songs_filter);
-    console.log(songs);
     res.send(songs);
 });
 
 app.patch('/update_song', async (req, res) => {
+    logger.info(`Updating song with id: ${req.body.id}. UserIP: ${req.ip}`);
     await Song.update({
         name: req.body.name, SingerId: req.body.SingerId
     },
@@ -169,6 +192,7 @@ app.patch('/update_song', async (req, res) => {
 });
 
 app.delete('/delete_song', async (req, res) => {
+    logger.info(`Deleting song with id: ${req.body.id}. UserIP: ${req.ip}`);
     await Song.destroy({
         where: {
             id: req.body.id
@@ -178,7 +202,9 @@ app.delete('/delete_song', async (req, res) => {
 });
 
 app.post('/create_singer', async (req, res) => {
+    logger.info(`Creating new singer. UserIP: ${req.ip}`);
     if (find_money(req.body.name)){
+        logger.warn(`Trying to create Monetochka. UserIP: ${req.ip}`);
         res.send('Певицу Монеточка никто не любит');
         return
     }
@@ -205,12 +231,15 @@ app.get('/read_singers', async (req, res) => {
     if (req.query.offset)
         singers_filter.offset = req.query.offset;
 
+    logger.info(`Getting singers from database. UserIP: ${req.ip}`);
     const singers = await Singer.findAll(singers_filter)
     res.send(singers);
 });
 
 app.patch('/update_singer', async (req, res) => {
+    logger.info(`Updating singer with id:${req.body.id}. UserIP: ${req.ip}`);
     if (find_money(req.body.name)){
+        logger.warn(`You can't use this name. UserIP: ${req.ip}`);
         res.send('Певицу Монеточка никто не любит');
         return
     }
@@ -226,6 +255,7 @@ app.patch('/update_singer', async (req, res) => {
 });
 
 app.delete('/delete_singer', async (req, res) => {
+    logger.info(`Deleting singer with id:${req.body.id}. UserIP: ${req.ip}`);
     await Singer.destroy({
         where: {
             id: req.body.id
@@ -234,6 +264,7 @@ app.delete('/delete_singer', async (req, res) => {
     res.send(`Певец удален`);
 });
 
+logger.info("Starting Node.js server");
 app.listen(3000, function(){
     console.log("Сервер ожидает подключения...");
 });
