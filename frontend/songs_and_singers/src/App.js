@@ -155,7 +155,7 @@ function ReadSingers() {
         {data.data.map(singer => {
          return (
             <div key={singer.id}>
-              <p>{singer.name}</p>
+              <p>Исполнитель: {singer.name}</p>
             </div>
           );
         })}
@@ -178,7 +178,7 @@ function ReadSongs() {
 
     if (name)
       params.name = name;
-      
+
     if (SingerId)
       params.SingerId = SingerId;
 
@@ -228,8 +228,8 @@ function ReadSongs() {
       {data.data.map(song => {
          return (
             <div key={song.id}>
-              <p>{song.name}</p>
-              <p>{song['Singer.name']}</p>
+              <p>Песня: {song.name}</p>
+              <p>Исполнитель: {song['Singer.name']}</p>
               <br/>
             </div>
           );
