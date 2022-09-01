@@ -1,14 +1,18 @@
-const { Sequelize, DataTypes, Op } = require('sequelize');
+const { Op } = require('sequelize');
 const fs = require('fs');
 const express = require("express");
 const bodyParser = require("body-parser");
 const { createLogger, format, transports } = require("winston");
-const CyrillicToTranslit = require('cyrillic-to-translit-js');
-const cyrillicToTranslit = new CyrillicToTranslit();
+
 const app = express();
 let sequelize, Singer, Song;
 
-// request.socket.remoteAddress
+const { read_config } = require("./modules/read_config");
+const { conn_setup } = require("./modules/conn_setup");
+const { test_conn } = require("./modules/test_conn");
+const { model_init } = require("./modules/model_init");
+const { find_money } = require("./modules/find_money");
+
 const logger = createLogger({
     format: format.combine(format.timestamp(), format.json()),
     transports: [new transports.Console({})],
@@ -45,102 +49,22 @@ const config = new Object({
 logger.info("Setting default config path");
 const path = './config.json';
 
-function read_config(){
-    try {
-        logger.info(`Watching for existing config.`);
-        fs.accessSync(path, fs.F_OK);
-        logger.info(`Config exists.`);
-    }
-    catch(err){
-        logger.info(`Config does not exist. Creating default one...`);
-        fs.writeFileSync('config.json', JSON.stringify(config));
-        logger.info(`Config created successfully`);
-    }
-    
-    logger.info(`Reading credentials from config`);
-    return fs.readFileSync(path, "utf8");
-};
-
-function conn_setup(credentials){
-    sequelize = new Sequelize(credentials.database, credentials.username, credentials.password, {
-        host: credentials.host,
-        dialect: 'postgres'
-    });
-    logger.info(`Setup was successful`);
-};
-
-async function test_conn(){
-    try {
-        logger.info(`Testing connection`);
-        await sequelize.authenticate();
-        logger.info(`Successfully connected`);
-        return true;
-    } catch (e) {
-        logger.error(`Couldn't connect to database. Error: ${e}`);
-        return false;
-    }
-}
-
-function model_init(){
-    Song = sequelize.define(
-        'Song',
-        {
-          name: {
-            type: DataTypes.STRING,
-            allowNull: false,
-          },
-        },
-        {
-            sequelize,
-            modelName: 'Song',
-        }
-    )
-    
-    Singer = sequelize.define(
-        'Singer',
-        {
-          name: {
-            type: DataTypes.STRING,
-            allowNull: false,
-          },
-        },
-        {
-            sequelize,
-            modelName: 'Singer',
-        }
-    )
-    Singer.hasMany(Song, {onDelete: 'CASCADE'});
-    Song.belongsTo(Singer);
-
-    logger.info(`Synchronizing models with database`);
-    Song.sync({ alter: true });
-    Singer.sync({ alter: true });
-}
-
-function find_money(name){
-    name = name.replaceAll('0', 'o');
-    name = name.replaceAll('4', 'ch');
-    if (name == 'Монеточка' || cyrillicToTranslit.reverse(name) == 'Монеточка')
-        return true
-    return false
-}
-
 app.set("view engine", "hbs");
 
 app.get('/', (req, res) => {
     logger.info(`Getting db credentials from config. UserIP: ${req.ip}`);
-    let db_credentials = JSON.parse(read_config());
+    let db_credentials = JSON.parse(read_config(path, logger, fs));
     logger.info(`Setting up connection to db. UserIP: ${req.ip}`);
-    conn_setup(db_credentials);
+    sequelize = conn_setup(db_credentials, logger);
 
     logger.info(`Testing connection stable to db. UserIP: ${req.ip}`);
-    if (!test_conn()){
+    if (!test_conn(sequelize, logger)){
         logger.error(`Wrong connection to db. UserIP: ${req.ip}`);
         res.send('Неправильные данные для подключения к базе данных');
     }
     else {
         logger.info(`Initializing sequelize models. UserIP: ${req.ip}`);
-        model_init();
+        [Song, Singer] = model_init(sequelize, logger);
         res.send('Инициализация базы данных успешно выполнена');
     }
 });
